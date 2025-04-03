@@ -14,6 +14,7 @@ This project automates the collection and storage of weather data using Google C
 ## Project Overview
 The pipeline consists of the following components:
 - **Cloud Scheduler**: Triggers the pipeline hourly.
+- **Pub/Sub**: Manages messaging between components.
 - **Cloud Functions**: Receives Pub/Sub messages from Cloud Scheduler and triggers Cloud Run jobs.
 - **Cloud Run Jobs**:
   - `get-data-job`: Fetches weather data from an API (e.g., OpenWeatherMap) and stores it in Cloud Storage.
@@ -32,7 +33,7 @@ Before starting, ensure you have:
 ### 1. Project Setup
 Create a Google Cloud Project (if not already created):
 ```bash
-gcloud projects create weather-data-pipeline --name="Weather Pipeline"
+gcloud projects create vibrant-map-454012-h9 --name="Weather Pipeline"
 ```
 Enable Required APIs:
 ```bash
@@ -41,68 +42,79 @@ gcloud services enable cloudfunctions.googleapis.com run.googleapis.com cloudsch
 
 Set Up Service Accounts:
 ```bash
-gcloud iam service-accounts create cloud-run-sa --display-name="Cloud Run Service Account" --project weather-data-pipeline
-gcloud iam service-accounts create cloud-functions-sa --display-name="Cloud Functions Service Account" --project weather-data-pipeline
+gcloud iam service-accounts create cloud-run-sa --display-name="Cloud Run Service Account" --project vibrant-map-454012-h9
+gcloud iam service-accounts create cloud-functions-sa --display-name="Cloud Functions Service Account" --project vibrant-map-454012-h9
 ```
 
-### 2. Cloud Storage
+### 2. Pub/Sub Setup
+Create a Pub/Sub topic and subscriptions:
+```bash
+gcloud pubsub topics create trigger-weather-jobs
+```
+Create subscriptions:
+```bash
+gcloud pubsub subscriptions create trigger-get-data-sub --topic trigger-weather-jobs
+gcloud pubsub subscriptions create trigger-load-data-sub --topic trigger-weather-jobs
+```
+
+### 3. Cloud Storage
 Create a Bucket:
 ```bash
 gsutil mb gs://weather_data_lake
 ```
 
-### 3. BigQuery
+### 4. BigQuery
 Create a Dataset and Table:
 ```bash
-bq mk --dataset weather-data-pipeline:weather_data
-bq mk --table weather-data-pipeline:weather_data.weather_records city:STRING,localtime:TIMESTAMP,temperature:FLOAT
+bq mk --dataset vibrant-map-454012-h9:weather_data
+bq mk --table vibrant-map-454012-h9:weather_data.weather_records city:STRING,localtime:TIMESTAMP,temperature:FLOAT
 ```
 
-### 4. Cloud Run Jobs
-#### 4.1. `get-data-job`
+### 5. Cloud Run Jobs
+#### 5.1. `get-data-job`
 Build and push the image:
 ```bash
-docker build -t us-central1-docker.pkg.dev/weather-data-pipeline/weather-automation-repo/get-data .
-docker push us-central1-docker.pkg.dev/weather-data-pipeline/weather-automation-repo/get-data
+docker build -t us-central1-docker.pkg.dev/vibrant-map-454012-h9/weather-automation-repo/get-data .
+docker push us-central1-docker.pkg.dev/vibrant-map-454012-h9/weather-automation-repo/get-data
 ```
 Deploy the job:
 ```bash
 gcloud run jobs create get-data-job \
-  --image us-central1-docker.pkg.dev/weather-data-pipeline/weather-automation-repo/get-data \
+  --image us-central1-docker.pkg.dev/vibrant-map-454012-h9/weather-automation-repo/get-data \
   --region us-central1 \
-  --service-account cloud-run-sa@weather-data-pipeline.iam.gserviceaccount.com \
+  --service-account cloud-run-sa@vibrant-map-454012-h9.iam.gserviceaccount.com \
   --set-env-vars BUCKET_NAME=weather_data_lake \
   --set-secrets WEATHER_API_KEY=weather-api-key:latest
 ```
 
-#### 4.2. `load-data-job`
+#### 5.2. `load-data-job`
 Build and push the image:
 ```bash
-docker build -t us-central1-docker.pkg.dev/weather-data-pipeline/weather-automation-repo/load-data .
-docker push us-central1-docker.pkg.dev/weather-data-pipeline/weather-automation-repo/load-data
+docker build -t us-central1-docker.pkg.dev/vibrant-map-454012-h9/weather-automation-repo/load-data .
+docker push us-central1-docker.pkg.dev/vibrant-map-454012-h9/weather-automation-repo/load-data
 ```
 Deploy the job:
 ```bash
 gcloud run jobs create load-data-job \
-  --image us-central1-docker.pkg.dev/weather-data-pipeline/weather-automation-repo/load-data \
+  --image us-central1-docker.pkg.dev/vibrant-map-454012-h9/weather-automation-repo/load-data \
   --region us-central1 \
-  --service-account cloud-run-sa@weather-data-pipeline.iam.gserviceaccount.com \
-  --set-env-vars BUCKET_NAME=weather_data_lake,PROJECT_ID=weather-data-pipeline,DATASET_ID=weather_data,TABLE_ID=weather_records
+  --service-account cloud-run-sa@vibrant-map-454012-h9.iam.gserviceaccount.com \
+  --set-env-vars BUCKET_NAME=weather_data_lake,PROJECT_ID=vibrant-map-454012-h9,DATASET_ID=weather_data,TABLE_ID=weather_records
 ```
 
-### 5. Cloud Functions
+### 6. Cloud Functions
 Deploy Cloud Function to trigger Cloud Run jobs:
 ```bash
 gcloud functions deploy trigger-cloud-run-job \
   --runtime python310 \
   --region us-central1 \
   --trigger-topic trigger-weather-jobs \
-  --project weather-data-pipeline \
+  --project vibrant-map-454012-h9 \
   --entry-point trigger_cloud_run_job \
-  --service-account cloud-functions-sa@weather-data-pipeline.iam.gserviceaccount.com
+  --service-account cloud-functions-sa@vibrant-map-454012-h9.iam.gserviceaccount.com
 ```
 
-### 6. Cloud Scheduler
+### 7. Cloud Scheduler
 Schedule job executions:
 ```bash
 gcloud scheduler jobs create pubsub trigger-get-data-hourly \
@@ -110,7 +122,7 @@ gcloud scheduler jobs create pubsub trigger-get-data-hourly \
   --topic trigger-weather-jobs \
   --message-body="run-get-data" \
   --location us-central1 \
-  --project weather-data-pipeline
+  --project vibrant-map-454012-h9
 ```
 ```bash
 gcloud scheduler jobs create pubsub trigger-load-data-hourly \
@@ -118,13 +130,14 @@ gcloud scheduler jobs create pubsub trigger-load-data-hourly \
   --topic trigger-weather-jobs \
   --message-body="run-load-data" \
   --location us-central1 \
-  --project weather-data-pipeline
+  --project vibrant-map-454012-h9
 ```
 
 ## Deployment
 Verify all components are set up:
+- Pub/Sub topics and subscriptions.
 - Cloud Storage bucket (`gs://weather_data_lake`).
-- BigQuery dataset and table (`weather-data-pipeline.weather_data.weather_records`).
+- BigQuery dataset and table (`vibrant-map-454012-h9.weather_data.weather_records`).
 - Cloud Run jobs deployed.
 - Cloud Function deployed.
 - Cloud Scheduler jobs created.
@@ -133,12 +146,12 @@ Verify all components are set up:
 ### Testing
 Trigger jobs manually:
 ```bash
-gcloud scheduler jobs run trigger-get-data-hourly --location us-central1 --project weather-data-pipeline
-gcloud scheduler jobs run trigger-load-data-hourly --location us-central1 --project weather-data-pipeline
+gcloud scheduler jobs run trigger-get-data-hourly --location us-central1 --project vibrant-map-454012-h9
+gcloud scheduler jobs run trigger-load-data-hourly --location us-central1 --project vibrant-map-454012-h9
 ```
 Verify data in BigQuery:
 ```sql
-SELECT * FROM `weather-data-pipeline.weather_data.weather_records` ORDER BY localtime DESC LIMIT 10;
+SELECT * FROM `vibrant-map-454012-h9.weather_data.weather_records` ORDER BY localtime DESC LIMIT 10;
 ```
 
 ### Monitoring
@@ -146,14 +159,14 @@ Set up Google Cloud Monitoring alerts for:
 - Cloud Run job failures.
 - Data freshness in BigQuery:
 ```sql
-SELECT COUNT(*) FROM `weather-data-pipeline.weather_data.weather_records` WHERE localtime >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR);
+SELECT COUNT(*) FROM `vibrant-map-454012-h9.weather_data.weather_records` WHERE localtime >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR);
 ```
 
 ## Troubleshooting
 ### Permission Denied
 Ensure service accounts have the correct roles:
 ```bash
-gcloud projects add-iam-policy-binding weather-data-pipeline --member="serviceAccount:cloud-run-sa@weather-data-pipeline.iam.gserviceaccount.com" --role="roles/bigquery.dataEditor"
+gcloud projects add-iam-policy-binding vibrant-map-454012-h9 --member="serviceAccount:cloud-run-sa@vibrant-map-454012-h9.iam.gserviceaccount.com" --role="roles/bigquery.dataEditor"
 ```
 
 ### No Data in BigQuery
@@ -161,3 +174,4 @@ Check Cloud Storage for files:
 ```bash
 gsutil ls gs://weather_data_lake
 ```
+
