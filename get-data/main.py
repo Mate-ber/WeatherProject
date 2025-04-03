@@ -51,3 +51,6 @@ def fetch_weather_data(event, context):
             except Exception as e:
                 print(f"Failed to upload data for {city}: {e}")
     return "Weather data fetched and uploaded successfully", 200
+
+if __name__ == "__main__":
+    fetch_weather_data()
