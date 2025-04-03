@@ -65,3 +65,7 @@ def load_to_bigquery(event, context):
             print(f"Failed to load data for {city}: {e}")
 
     return "Weather data loaded successfully", 200
+
+
+if __name__ == "__main__":
+    load_to_bigquery()
