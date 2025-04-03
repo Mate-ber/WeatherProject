@@ -7,14 +7,12 @@ This project automates the collection and storage of weather data using Google C
 The approach leverages a serverless architecture to automate weather data collection and storage. Data is fetched from an external API by a Cloud Run job (`get-data-job`), temporarily stored in Cloud Storage, and then loaded into BigQuery by another Cloud Run job (`load-data-job`). A Cloud Function (`trigger-cloud-run-job`) acts as a bridge, triggered by Cloud Scheduler to initiate the jobs hourly, ensuring minimal maintenance and scalability.
 
 ## Table of Contents
-1. [Project Overview](#overview)
-2. [Architecture](#architecture)
-3. [Prerequisites](#prerequisites)
-4. [Setup Instructions](#setup-instructions)
-5. [Components](#components)
-6. [Deployment](#deployment)
-7. [Usage](#usage)
-8. [Troubleshooting](#troubleshooting)
+1. [Architecture](#architecture)
+2. [Prerequisites](#prerequisites)
+3. [Setup Instructions](#setup-instructions)
+4. [Deployment](#deployment)
+5. [Testing](#testing)
+6. [Troubleshooting](#troubleshooting)
 
 ## Architecture
 - **Cloud Scheduler**: Triggers the pipeline hourly.
