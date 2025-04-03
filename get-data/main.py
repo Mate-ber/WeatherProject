@@ -32,8 +32,8 @@ def upload_to_gcs(city, data, bucket_name):
     blob.upload_from_string(json.dumps(data), content_type="application/json")
     print(f"Uploaded {blob_name} to GCS")
 
-def fetch_weather_data(event, context):
-    """Cloud Function entry point to fetch weather data and upload to GCS."""
+def fetch_weather_data():
+    """Fetches weather data and uploads to GCS."""
     # Load sensitive information from environment variables
     api_key = os.getenv("WEATHER_API_KEY")
     bucket_name = os.getenv("BUCKET_NAME")
@@ -50,4 +50,6 @@ def fetch_weather_data(event, context):
                 upload_to_gcs(city, data, bucket_name)
             except Exception as e:
                 print(f"Failed to upload data for {city}: {e}")
-    return "Weather data fetched and uploaded successfully", 200
+
+if __name__ == "__main__":
+    fetch_weather_data()

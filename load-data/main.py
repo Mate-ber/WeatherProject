@@ -8,8 +8,8 @@ def read_cities():
         cities = [line.strip() for line in file if line.strip()]
     return cities
 
-def load_to_bigquery(event, context):
-    """Cloud Function entry point to load weather data from GCS to BigQuery."""
+def load_to_bigquery():
+    """Loads weather data from GCS to BigQuery."""
     # Load configuration from environment variables
     project_id = os.getenv("PROJECT_ID")
     dataset_id = os.getenv("DATASET_ID")
@@ -37,7 +37,7 @@ def load_to_bigquery(event, context):
         print(f"Successfully connected to GCS bucket: {bucket_name}")
     except Exception as e:
         print(f"Failed to connect to BigQuery or GCS: {e}")
-        return "Failed to connect to BigQuery or GCS", 500
+        raise e
 
     # Configure the BigQuery table reference
     table_ref = client.dataset(dataset_id).table(table_id)
@@ -64,4 +64,5 @@ def load_to_bigquery(event, context):
         except Exception as e:
             print(f"Failed to load data for {city}: {e}")
 
-    return "Weather data loaded successfully", 200
+if __name__ == "__main__":
+    load_to_bigquery()
