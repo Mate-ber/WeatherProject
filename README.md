@@ -13,6 +13,7 @@ The approach leverages a serverless architecture to automate weather data collec
 4. [Deployment](#deployment)
 5. [Testing](#testing)
 6. [Troubleshooting](#troubleshooting)
+7. [Analytics](#analytics)
 
 ## Architecture
 - **Cloud Scheduler**: Triggers the pipeline hourly.
@@ -351,3 +352,9 @@ Ensure the data schema matches the BigQuery table:
 ```bash
 bq show --schema vibrant-map-454012-h9:weather_data.weather_records
 ```
+
+## Analytics
+
+To check for analytics copy the link:
+
+https://lookerstudio.google.com/reporting/93903903-59f1-4f92-9308-b4208c53950a
