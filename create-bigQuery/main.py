@@ -3,9 +3,9 @@ from google.cloud.exceptions import NotFound
 from google.oauth2 import service_account
 import os
 
-def create_bigquery_table(event, context):
+def create_bigquery_table():
     """
-    Cloud Function to create a BigQuery dataset and table for weather data.
+    Creates a BigQuery dataset and table for weather data.
     """
     # Configuration from environment variables
     project_id = os.getenv("PROJECT_ID")
@@ -87,7 +87,7 @@ def create_bigquery_table(event, context):
     table_ref = client.dataset(dataset_id).table(table_id)
     table = bigquery.Table(table_ref, schema=schema)
     try:
-        table = client.create_table(table)  # This will create the table in BigQuery
+        table = client.create_table(table)
         print(f"Created table {table.full_table_id}")
     except Exception as e:
         print(f"Table creation failed: {e}")
@@ -96,4 +96,5 @@ def create_bigquery_table(event, context):
         else:
             raise e
 
-    return "BigQuery table created successfully", 200
+if __name__ == "__main__":
+    create_bigquery_table()
