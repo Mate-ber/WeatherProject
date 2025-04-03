@@ -97,3 +97,6 @@ def create_bigquery_table(event, context):
             raise e
 
     return "BigQuery table created successfully", 200
+    
+if __name__ == "__main__":
+    create_bigquery_table()
