@@ -1,69 +1,53 @@
 import requests
+import json
+import os
+from datetime import datetime
 from google.cloud import storage
 from google.oauth2 import service_account
-import datetime
-
-# WeatherAPI key
-API_KEY = "d7ca8805fba7426694894835250304"
-
-# Google Cloud Storage bucket name
-BUCKET_NAME = "weather_data_lake"
-
-# Path to the service account key file
-SERVICE_ACCOUNT_KEY_PATH = "../vibrant-map-454012-h9-051c9c818db3.json"
 
 def read_cities():
-    with open("../load-data/cities.txt", "r") as file:
+    with open("cities.txt", "r") as file:
         cities = [line.strip() for line in file if line.strip()]
     return cities
 
-def fetch_and_store_weather():
-    """
-    Fetches current weather data from WeatherAPI for specified cities and uploads it to a GCS bucket.
-    """
-    # Read cities from the file
-    CITIES = read_cities()
-    print(f"Cities to process: {CITIES}")
+def get_weather_data(city, api_key):
+    url = f"http://api.weatherapi.com/v1/current.json?key={api_key}&q={city}&aqi=no"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Failed to fetch data for {city}: {response.status_code}")
+        return None
 
-    # Authenticate with the service account
-    try:
-        credentials = service_account.Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_KEY_PATH,
-            scopes=["https://www.googleapis.com/auth/cloud-platform"]
-        )
-        client = storage.Client(credentials=credentials, project=credentials.project_id)
-        bucket = client.get_bucket(BUCKET_NAME)
-        print(f"Successfully connected to bucket: {BUCKET_NAME}")
-    except Exception as e:
-        print(f"Failed to connect to bucket {BUCKET_NAME}: {e}")
-        return
+def upload_to_gcs(city, data, bucket_name):
+    credentials = service_account.Credentials.from_service_account_file(
+        "/etc/secrets/service-account-key.json",
+        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    )
+    storage_client = storage.Client(credentials=credentials)
+    bucket = storage_client.bucket(bucket_name)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    blob_name = f"weather_data/{city}/{city}_{timestamp}.json"
+    blob = bucket.blob(blob_name)
+    blob.upload_from_string(json.dumps(data), content_type="application/json")
+    print(f"Uploaded {blob_name} to GCS")
 
-    for city in CITIES:
-        # Construct the WeatherAPI URL with the API key and city
-        url = f"http://api.weatherapi.com/v1/current.json?key={API_KEY}&q={city}"
+def fetch_weather_data(event, context):
+    """Cloud Function entry point to fetch weather data and upload to GCS."""
+    # Load sensitive information from environment variables
+    api_key = os.getenv("WEATHER_API_KEY")
+    bucket_name = os.getenv("BUCKET_NAME")
 
-        try:
-            # Fetch the JSON data from WeatherAPI
-            response = requests.get(url)
-            response.raise_for_status()  # Raise an error if the request fails
-            data = response.json()
+    if not all([api_key, bucket_name]):
+        raise ValueError("Missing required environment variables: WEATHER_API_KEY or BUCKET_NAME")
 
-            # Generate a unique timestamp for the file
-            timestamp = datetime.datetime.utcnow().isoformat()
-
-            # Define the file path in the GCS bucket
-            blob_path = f"weather_data/{city}/{timestamp}.json"
-
-            # Upload the JSON data to GCS
-            blob = bucket.blob(blob_path)
-            blob.upload_from_string(str(data), content_type="application/json")
-
-            print(f"Successfully uploaded weather data for {city} to gs://{BUCKET_NAME}/{blob_path}")
-
-        except requests.exceptions.RequestException as e:
-            print(f"Failed to fetch data for {city}: {e}")
-        except Exception as e:
-            print(f"Failed to upload data for {city} to GCS: {e}")
-
-if __name__ == "__main__":
-    fetch_and_store_weather()
+    cities = read_cities()
+    print(f"Fetching data for cities: {cities}")
+    for city in cities:
+        data = get_weather_data(city, api_key)
+        if data:
+            try:
+                upload_to_gcs(city, data, bucket_name)
+            except Exception as e:
+                print(f"Failed to upload data for {city}: {e}")
+    return "Weather data fetched and uploaded successfully", 200
