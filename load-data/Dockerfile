@@ -8,7 +8,7 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # Copy the script and dependencies
-COPY main.py .
+COPY main.py .  # Change to load_data.py if that’s your file name
 COPY requirements.txt .
 COPY cities.txt .
 
@@ -16,4 +16,4 @@ COPY cities.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Command to run the script
-CMD ["python", "main.py"]
+CMD ["python", "main.py"]  # Change to load_data.py if applicable
