@@ -3,8 +3,7 @@ from google.cloud import storage
 from google.oauth2 import service_account
 import os
 import logging
-import uuid
-from datetime import datetime
+import json
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -54,60 +53,80 @@ def load_to_bigquery():
             # List all unprocessed files for the city
             prefix = f"weather_data/{city}/"
             blobs = bucket.list_blobs(prefix=prefix)
+            found_files = False
             for blob in blobs:
                 if blob.name.endswith(".json") and not blob.name.endswith(".processed"):
+                    found_files = True
                     try:
                         # Download and parse the JSON data
                         data = blob.download_as_text()
-                        parsed_data = eval(data)  # Assuming JSON is a valid Python dict
+                        parsed_data = json.loads(data)  # Use json.loads for safer parsing
                         location_name = parsed_data.get("location", {}).get("name")
                         localtime_epoch = parsed_data.get("location", {}).get("localtime_epoch")
 
-                        if location_name and localtime_epoch:
-                            # Check for existing records in BigQuery
-                            query = f"""
-                            SELECT COUNT(*)
-                            FROM `{full_table_id}`
-                            WHERE location.name = '{location_name}'
-                            AND location.localtime_epoch = {localtime_epoch}
-                            """
-                            query_job = client.query(query)
-                            result = next(query_job.result())[0]
-                            if result > 0:
-                                logger.info(f"Data for {location_name} at {localtime_epoch} already exists. Skipping.")
-                                bucket.rename_blob(blob, f"{blob.name}.processed")
-                                continue
+                        if not (location_name and localtime_epoch):
+                            logger.warning(f"Missing location.name or localtime_epoch in {blob.name}. Skipping.")
+                            continue
 
-                        # Add a unique record ID
-                        parsed_data["record_id"] = str(uuid.uuid4())
+                        # Check for existing records in BigQuery
+                        query = f"""
+                        SELECT COUNT(*)
+                        FROM `{full_table_id}`
+                        WHERE location.name = @location_name
+                        AND location.localtime_epoch = @localtime_epoch
+                        """
+                        job_config = bigquery.QueryJobConfig(
+                            query_parameters=[
+                                bigquery.ScalarQueryParameter("location_name", "STRING", location_name),
+                                bigquery.ScalarQueryParameter("localtime_epoch", "INT64", localtime_epoch),
+                            ]
+                        )
+                        query_job = client.query(query, job_config=job_config)
+                        result = next(query_job.result())[0]
 
-                        # Format timestamps if necessary
-                        if "location" in parsed_data and "localtime" in parsed_data["location"]:
-                            try:
-                                parsed_data["location"]["localtime"] = datetime.strptime(
-                                    parsed_data["location"]["localtime"], "%Y-%m-%d %H:%M"
-                                ).isoformat()
-                            except ValueError:
-                                logger.warning(f"Invalid localtime format for {location_name}")
-                        if "current" in parsed_data and "last_updated" in parsed_data["current"]:
-                            try:
-                                parsed_data["current"]["last_updated"] = datetime.strptime(
-                                    parsed_data["current"]["last_updated"], "%Y-%m-%d %H:%M"
-                                ).isoformat()
-                            except ValueError:
-                                logger.warning(f"Invalid last_updated format for {location_name}")
-
-                        # Insert the new record into BigQuery
-                        table = client.get_table(full_table_id)
-                        errors = client.insert_rows_json(table, [parsed_data])
-                        if errors:
-                            logger.error(f"Failed to load {blob.name}: {errors}")
-                        else:
-                            logger.info(f"Successfully loaded {blob.name} into BigQuery")
+                        if result > 0:
+                            logger.info(f"Data for {location_name} at {localtime_epoch} already exists in BigQuery. Skipping.")
                             bucket.rename_blob(blob, f"{blob.name}.processed")
+                            continue
+
+                        # If not a duplicate, load the data into BigQuery
+                        table_ref = client.dataset(dataset_id).table(table_id)
+                        job_config = bigquery.LoadJobConfig(
+                            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+                            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+                            autodetect=True
+                        )
+
+                        # Write the data to a temporary file in memory to use load_table_from_uri
+                        with open("temp.json", "w") as temp_file:
+                            temp_file.write(json.dumps(parsed_data))
+
+                        # Upload the temp file to a temporary location in GCS
+                        temp_blob = bucket.blob(f"temp/{blob.name}")
+                        temp_blob.upload_from_filename("temp.json")
+
+                        # Load the single file into BigQuery
+                        uri = f"gs://{bucket_name}/temp/{blob.name}"
+                        load_job = client.load_table_from_uri(
+                            uri,
+                            table_ref,
+                            job_config=job_config
+                        )
+                        load_job.result()
+
+                        # Clean up: delete the temp file from GCS
+                        temp_blob.delete()
+
+                        logger.info(f"Successfully loaded {blob.name} into BigQuery")
+                        bucket.rename_blob(blob, f"{blob.name}.processed")
+
                     except Exception as e:
                         logger.error(f"Error processing {blob.name}: {e}")
                         continue
+
+            if not found_files:
+                logger.info(f"No unprocessed files found for {city} in Cloud Storage.")
+
         except Exception as e:
             logger.error(f"Failed to process data for {city}: {e}")
 
